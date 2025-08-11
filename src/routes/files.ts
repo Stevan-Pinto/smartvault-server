@@ -108,9 +108,22 @@ router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'File not found' });
     }
-    res.redirect(file.path);
+
+    const publicId = `smartvault_uploads/${path.parse(file.path.split('/').pop()!).name}`;
+    
+    // Generate a secure, signed URL that allows inline preview
+    const signedUrl = cloudinary.url(publicId, {
+        resource_type: 'raw', // Use 'raw' for non-image/video files
+        sign_url: true,
+        secure: true,
+    });
+    
+    // Instead of redirecting, send the URL back as JSON
+    res.json({ previewUrl: signedUrl });
+
   } catch (err) {
-    res.status(500).json({ message: 'Preview failed' });
+    console.error("Preview URL generation error:", err);
+    res.status(500).json({ message: 'Could not get preview link' });
   }
 });
 
