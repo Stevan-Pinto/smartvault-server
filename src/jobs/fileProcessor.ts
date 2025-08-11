@@ -5,15 +5,23 @@ import OpenAI from 'openai';
 import File from '../models/File';
 import { pgPool } from '../db/postgres';
 import dotenv from 'dotenv';
-import axios from 'axios'; // <-- ADDED: To download files from Cloudinary
+import axios from 'axios';
+import { Types } from 'mongoose'; // <-- ADD THIS IMPORT for correct typing
 
 dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // --- UPDATED FOR DEPLOYMENT ---
-// Use a single environment variable for the full Redis URL from Upstash
-const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+// Parse the Redis URL to create a connection object that matches BullMQ's expected type
+const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+const connection = {
+  host: redisUrl.hostname,
+  port: Number(redisUrl.port),
+  password: redisUrl.password,
+  // Add TLS for secure connections to services like Upstash
+  tls: redisUrl.protocol === 'rediss:' ? {} : undefined, 
+};
 
 const DUPLICATE_THRESHOLD = 0.88;
 
@@ -24,13 +32,10 @@ export const fileWorker = new Worker(
     const fileDoc = await File.findById(fileId);
     if (!fileDoc) return;
 
-    // --- THIS LOGIC IS NEW ---
-    // Instead of a local path, the worker now fetches the file from the Cloudinary URL.
     const fileUrl = fileDoc.path; 
     let extractedText = '';
 
     try {
-        // Use axios to get the file as a buffer from the URL
         const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
         const buffer = Buffer.from(response.data);
 
@@ -41,19 +46,14 @@ export const fileWorker = new Worker(
             const { data: tdata } = await Tesseract.recognize(buffer, 'eng');
             extractedText = tdata?.text || '';
         } else {
-            // For plain text files, etc.
             extractedText = buffer.toString('utf8');
         }
     } catch (err) {
       console.error(`Failed to process file from URL ${fileUrl}:`, err);
     }
 
-    // Save the extracted content for full-text search
     fileDoc.content = extractedText;
 
-    // --- The rest of the logic remains the same ---
-
-    // AI summary & tags
     try {
       const prompt = `Summarize the following document in 3 sentences and list up to 6 tags (comma separated).\n\n${extractedText.substring(0, 4000)}`;
       const chat = await openai.chat.completions.create({
@@ -65,23 +65,18 @@ export const fileWorker = new Worker(
       const parts = content.split('Tags:');
       const summary = (parts[0] || '').trim();
       const tags = (parts[1] || '')
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean)
-        .slice(0, 6);
-
+        .split(',').map((s: string) => s.trim()).filter(Boolean).slice(0, 6);
       fileDoc.summary = summary;
       fileDoc.tags = tags;
     } catch (err) {
       console.error('AI summary/tags error:', err);
     }
 
-    // Embedding
     let embedding: number[] = [];
     try {
       const embResp = await openai.embeddings.create({
         model: 'text-embedding-3-small',
-        input: (extractedText || fileDoc.filename).substring(0, 3000)
+        input: (extractedText || fileDoc.filename).substring(0, 8000)
       });
       embedding = embResp.data[0].embedding;
       await pgPool.query(
@@ -92,19 +87,14 @@ export const fileWorker = new Worker(
       console.error('Embedding error:', err);
     }
 
-    // Duplicate detection
     try {
       if (embedding.length > 0) {
         const { rows } = await pgPool.query(
-          `SELECT file_id, 1 - (embedding <=> $2) AS similarity
-           FROM file_vectors
-           WHERE file_id <> $1
-           ORDER BY similarity DESC
-           LIMIT 5`,
+          `SELECT file_id, 1 - (embedding <=> $2) AS similarity FROM file_vectors WHERE file_id <> $1 ORDER BY similarity DESC LIMIT 5`,
           [fileDoc._id.toString(), JSON.stringify(embedding)]
         );
 
-        const possible: { fileId: any; score: number }[] = [];
+        const possible: { fileId: Types.ObjectId; score: number }[] = [];
         for (const r of rows) {
           const candidate = await File.findById(r.file_id);
           if (!candidate || candidate.ownerId.toString() !== fileDoc.ownerId.toString()) continue;
@@ -112,9 +102,10 @@ export const fileWorker = new Worker(
             possible.push({ fileId: candidate._id, score: r.similarity });
           }
         }
-        fileDoc.duplicates = possible;
         
-        // Reciprocal updates
+        // --- THIS IS THE FIX FOR THE DUPLICATES ARRAY TYPE ERROR ---
+        fileDoc.duplicates = possible as any;
+
         for (const p of possible) {
           await File.updateOne(
             { _id: p.fileId },
@@ -126,10 +117,8 @@ export const fileWorker = new Worker(
       console.error('Duplicate detection error:', err);
     }
 
-    // Save all updates (content, summary, tags, duplicates) at once
     await fileDoc.save();
-
     return { fileId: fileDoc._id.toString() };
   },
-  { connection: redisUrl } // Use the full URL for the connection
+  { connection: connection } // Use the corrected connection object
 );

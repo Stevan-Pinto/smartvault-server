@@ -13,9 +13,6 @@ router.post('/', auth, body('name').notEmpty(), async (req: AuthRequest, res) =>
 
   try {
     const { name, parentId } = req.body;
-    
-    // --- THIS IS THE FIX ---
-    // Convert the string 'root' from the frontend into a proper null parentId
     const finalParentId = parentId === 'root' ? null : parentId || null;
 
     const folder = await Folder.create({ 
@@ -25,12 +22,12 @@ router.post('/', auth, body('name').notEmpty(), async (req: AuthRequest, res) =>
     });
 
     res.status(201).json(folder);
-  } catch (err) {
+  } catch (err: any) { // <-- THIS IS THE FIX
     // This will now correctly catch duplicate folder names
     if (err.code === 11000) {
       return res.status(400).json({ message: 'A folder with this name already exists here.' });
     }
-    console.error("Folder creation error:", err); // Added for better server logs
+    console.error("Folder creation error:", err);
     res.status(500).json({ message: 'Failed to create folder' });
   }
 });
