@@ -8,15 +8,15 @@ export const pgPool = new Pool({
   user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'postgres',
   database: process.env.PG_DB || 'postgres',
-  family: 4,  // <-- THIS IS THE FIX: Force IPv4
-}as any);
+  family: 4 // This is the correct fix and doesn't need 'as any'
+});
 
 export async function ensurePgVectorTable() {
   try {
     // Create extension + table if not exists
     await pgPool.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
     await pgPool.query(`
-      CREATE TABLE IF NOT "EXISTS" file_vectors (
+      CREATE TABLE IF NOT EXISTS file_vectors ( -- <-- FIXED: Removed quotes around EXISTS
         file_id TEXT PRIMARY KEY,
         embedding vector(1536)
       );
