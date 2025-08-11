@@ -2,22 +2,19 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
 
+// --- THIS IS THE FINAL FIX ---
+// We now use a single DATABASE_URL variable that will hold the entire
+// connection pooler string from Supabase. This is the most robust method.
 export const pgPool = new Pool({
-  host: process.env.PG_HOST || 'localhost',
-  port: Number(process.env.PG_PORT || 5432),
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres',
-  database: process.env.PG_DB || 'postgres',
-  // --- THIS IS THE FINAL FIX ---
-  // Heroku and other cloud platforms often require an explicit SSL connection.
+  connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false 
+    rejectUnauthorized: false
   }
 });
 
 export async function ensurePgVectorTable() {
   try {
-    // Create extension + table if not exists
+    // This logic remains the same
     await pgPool.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
     await pgPool.query(`
       CREATE TABLE IF NOT EXISTS file_vectors (
@@ -28,7 +25,6 @@ export async function ensurePgVectorTable() {
     console.log('✅ Postgres (pgvector) ready');
   } catch (err) {
     console.error("Postgres init error:", err)
-    // Throw the error to let the startup process know something is wrong
     throw err;
   }
 }
