@@ -21,6 +21,7 @@ const app = express();
 // Explicitly configure CORS to allow your Vercel frontend URL
 const corsOptions = {
   origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Use an env variable for production
+  credentials: true,
 };
 app.use(cors(corsOptions));
 // ------------------------------------------
