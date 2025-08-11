@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { v2 as cloudinary } from 'cloudinary'; // <-- ADDED for Cloudinary
-import { CloudinaryStorage } from 'multer-storage-cloudinary'; // <-- ADDED for Cloudinary
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import auth, { AuthRequest } from '../middleware/auth';
 import File from '../models/File';
 import { fileQueue } from '../jobs/queue';
 import ShareLink from '../models/ShareLink';
 import { add } from 'date-fns';
 import bcrypt from 'bcrypt';
+import path from 'path'; // <-- ADDED: This import fixes the 'path' error
 
 const router = Router();
 
@@ -21,17 +22,16 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
-        folder: 'smartvault_uploads', // A folder in your Cloudinary account
+        folder: 'smartvault_uploads',
         resource_type: 'auto'
     } as any
 });
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// --- UPDATED FOR DEPLOYMENT ---
 router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
@@ -39,8 +39,8 @@ router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res
     
     const doc = await File.create({
       ownerId: req.userId,
-      filename: req.file.originalname, // Use the original name for display
-      path: req.file.path, // This is now the secure URL from Cloudinary
+      filename: req.file.originalname,
+      path: req.file.path,
       mimeType: req.file.mimetype,
       size: req.file.size,
       folderId: folderId === 'root' ? null : folderId || null,
@@ -48,7 +48,7 @@ router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res
 
     await fileQueue.add('process-file', { fileId: doc._id.toString() });
     res.status(201).json(doc);
-  } catch (err) {
+  } catch (err: any) { // <-- FIXED: Explicitly type 'err' as any
     console.error('Upload error', err);
     res.status(500).json({ message: 'Upload failed', error: err.message || err });
   }
@@ -72,32 +72,27 @@ router.get('/', auth, async (req: AuthRequest, res) => {
   }
 });
 
-// --- UPDATED FOR DEPLOYMENT ---
 router.get('/:id/download', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'File not found' });
     }
-    // Redirect the user's browser directly to the Cloudinary URL for download
     res.redirect(file.path);
   } catch (err) {
     res.status(500).json({ message: 'Download failed' });
   }
 });
 
-// --- UPDATED FOR DEPLOYMENT ---
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'Not found' });
     }
-
-    // Important: Delete the file from Cloudinary first
-    // Cloudinary's public_id is the filename without the extension, inside the folder
-    const publicId = `smartvault_uploads/${path.parse(file.path.split('/').pop()).name}`;
-    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }); // Use 'raw' for non-image/video files like PDFs
+    
+    const publicId = `smartvault_uploads/${path.parse(file.path.split('/').pop()!).name}`;
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
 
     await file.deleteOne();
     res.json({ ok: true });
@@ -107,21 +102,18 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
   }
 });
 
-// --- UPDATED FOR DEPLOYMENT ---
 router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'File not found' });
     }
-    // Redirect to the Cloudinary URL, which can handle in-browser previews
     res.redirect(file.path);
   } catch (err) {
     res.status(500).json({ message: 'Preview failed' });
   }
 });
 
-// --- UPDATED FOR PHASE 3 ---
 router.post('/:id/share', auth, async (req: AuthRequest, res) => {
   try {
     const { expiresIn, password } = req.body;
@@ -187,7 +179,7 @@ router.post('/delete-batch', auth, async (req: AuthRequest, res) => {
         const files = await File.find({ _id: { $in: fileIds }, ownerId: req.userId });
 
         for (const file of files) {
-            const publicId = `smartvault_uploads/${path.parse(file.path.split('/').pop()).name}`;
+            const publicId = `smartvault_uploads/${path.parse(file.path.split('/').pop()!).name}`;
             await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
         }
 

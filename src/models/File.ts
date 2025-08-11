@@ -7,16 +7,18 @@ const DuplicateSchema = new Schema({
 
 const FileSchema = new Schema({
   ownerId: { type: Types.ObjectId, required: true, ref: 'User' },
-   folderId: { type: Types.ObjectId, ref: 'Folder', default: null },
+  folderId: { type: Types.ObjectId, ref: 'Folder', default: null },
   filename: { type: String, required: true },
   path: { type: String, required: true },
   mimeType: { type: String },
   size: { type: Number },
   tags: { type: [String], default: [] },
   summary: { type: String },
-  folder: { type: Types.ObjectId, ref: 'Folder', default: null }, // ✅ NEW: Folder reference
-  duplicates: { type: [DuplicateSchema], default: [] },
+  content: { type: String }, // For full-text search
+  duplicates: { type: [DuplicateSchema], default: [] }, // Corrected type
   createdAt: { type: Date, default: Date.now }
 });
+
+FileSchema.index({ content: 'text' });
 
 export default model('File', FileSchema);
