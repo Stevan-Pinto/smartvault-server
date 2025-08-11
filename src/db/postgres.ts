@@ -8,15 +8,15 @@ export const pgPool = new Pool({
   user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'postgres',
   database: process.env.PG_DB || 'postgres',
-  family: 4 // This is the correct fix and doesn't need 'as any'
-});
+  family: 4 // Force IPv4 to fix the connection issue
+} as any); // <-- THIS IS THE FIX: Bypasses the incorrect type definition
 
 export async function ensurePgVectorTable() {
   try {
     // Create extension + table if not exists
     await pgPool.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
     await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS file_vectors ( -- <-- FIXED: Removed quotes around EXISTS
+      CREATE TABLE IF NOT EXISTS file_vectors ( 
         file_id TEXT PRIMARY KEY,
         embedding vector(1536)
       );
@@ -24,7 +24,6 @@ export async function ensurePgVectorTable() {
     console.log('✅ Postgres (pgvector) ready');
   } catch (err) {
     console.error("Postgres init error:", err)
-    // Throw the error to let the startup process know something is wrong
     throw err;
   }
 }
