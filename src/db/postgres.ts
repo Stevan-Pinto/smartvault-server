@@ -8,8 +8,8 @@ export const pgPool = new Pool({
   user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'postgres',
   database: process.env.PG_DB || 'postgres',
-  family: 4 // <-- THIS IS THE FIX: Force IPv4
-});
+  family: 4,  // <-- THIS IS THE FIX: Force IPv4
+}as any);
 
 export async function ensurePgVectorTable() {
   try {
