@@ -19,8 +19,10 @@ const connection = {
   host: redisUrl.hostname,
   port: Number(redisUrl.port),
   password: redisUrl.password,
-  // Add TLS for secure connections to services like Upstash
-  tls: redisUrl.protocol === 'rediss:' ? {} : undefined, 
+  // --- THIS IS THE FIX ---
+  tls: {
+    rejectUnauthorized: false
+  },
 };
 
 const DUPLICATE_THRESHOLD = 0.88;
