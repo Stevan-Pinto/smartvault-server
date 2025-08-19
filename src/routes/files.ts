@@ -36,13 +36,19 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// --- HELPER FUNCTION ---
+// --- HELPER FUNCTIONS ---
 const getPublicIdFromUrl = (url: string) => {
     const parts = url.split('/');
     const filenameWithExt = parts.pop()!;
     const folder = parts.pop()!;
     return `${folder}/${path.parse(filenameWithExt).name}`;
 };
+
+const getResourceType = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    return 'raw'; // Default to 'raw' for PDFs, text files, etc.
+}
 
 
 // --- ROUTES ---
@@ -88,11 +94,11 @@ router.get('/', auth, async (req: AuthRequest, res) => {
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file || file.ownerId.toString() !== req.userId) {
-        return res.status(404).json({ message: 'Not found' });
-    }
+    if (!file) return res.status(404).json({ message: 'Not found' });
+    
     const publicId = getPublicIdFromUrl(file.path);
-    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+    const resource_type = getResourceType(file.mimeType);
+    
     await cloudinary.uploader.destroy(publicId, { resource_type: resource_type });
     await file.deleteOne();
     res.json({ ok: true });
@@ -105,19 +111,19 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
 router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file || file.ownerId.toString() !== req.userId) {
-        return res.status(404).json({ message: 'File not found' });
-    }
+    if (!file) return res.status(404).json({ message: 'File not found' });
+
     const publicId = getPublicIdFromUrl(file.path);
-    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+    const resource_type = getResourceType(file.mimeType);
+    
     const signedUrl = cloudinary.url(publicId, {
         resource_type: resource_type,
         sign_url: true,
         secure: true,
     });
+    
     res.json({ previewUrl: signedUrl });
   } catch (err) {
-    console.error("Preview URL generation error:", err);
     res.status(500).json({ message: 'Could not get preview link' });
   }
 });
@@ -125,11 +131,11 @@ router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
 router.get('/:id/download', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file || file.ownerId.toString() !== req.userId) {
-        return res.status(404).json({ message: 'File not found' });
-    }
+    if (!file) return res.status(404).json({ message: 'File not found' });
+    
     const publicId = getPublicIdFromUrl(file.path);
-    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+    const resource_type = getResourceType(file.mimeType);
+
     const signedUrl = cloudinary.url(publicId, {
         resource_type: resource_type,
         sign_url: true,
@@ -208,7 +214,7 @@ router.post('/delete-batch', auth, async (req: AuthRequest, res) => {
 
         for (const file of files) {
             const publicId = getPublicIdFromUrl(file.path);
-            const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+            const resource_type = getResourceType(file.mimeType);
             await cloudinary.uploader.destroy(publicId, { resource_type: resource_type });
         }
 
