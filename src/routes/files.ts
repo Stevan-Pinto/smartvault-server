@@ -29,15 +29,15 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // --- HELPER FUNCTION ---
-const getPublicId = (url: string) => {
+const getPublicIdFromUrl = (url: string) => {
     const parts = url.split('/');
-    const filename = parts.pop()!;
+    const filenameWithExt = parts.pop()!;
     const folder = parts.pop()!;
-    return `${folder}/${path.parse(filename).name}`;
+    return `${folder}/${path.parse(filenameWithExt).name}`;
 };
 
 
@@ -87,7 +87,7 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'Not found' });
     }
-    const publicId = getPublicId(file.path);
+    const publicId = getPublicIdFromUrl(file.path);
     await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
     await file.deleteOne();
     res.json({ ok: true });
@@ -97,44 +97,37 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
   }
 });
 
-// --- FINAL, CORRECTED PREVIEW ROUTE ---
 router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'File not found' });
     }
-    
     const publicId = getPublicIdFromUrl(file.path);
     const signedUrl = cloudinary.url(publicId, {
         resource_type: 'raw',
         sign_url: true,
         secure: true,
     });
-    
     res.json({ previewUrl: signedUrl });
   } catch (err) {
     res.status(500).json({ message: 'Could not get preview link' });
   }
 });
 
-// --- FINAL, CORRECTED DOWNLOAD ROUTE ---
 router.get('/:id/download', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || file.ownerId.toString() !== req.userId) {
         return res.status(404).json({ message: 'File not found' });
     }
-
     const publicId = getPublicIdFromUrl(file.path);
     const signedUrl = cloudinary.url(publicId, {
         resource_type: 'raw',
         sign_url: true,
         secure: true,
-        attachment: file.filename // This flag tells the browser to download
+        attachment: file.filename
     });
-    
-    // Send the secure URL back to the frontend
     res.json({ downloadUrl: signedUrl });
   } catch (err) {
     res.status(500).json({ message: 'Download failed' });
@@ -206,7 +199,7 @@ router.post('/delete-batch', auth, async (req: AuthRequest, res) => {
         const files = await File.find({ _id: { $in: fileIds }, ownerId: req.userId });
 
         for (const file of files) {
-            const publicId = getPublicId(file.path);
+            const publicId = getPublicIdFromUrl(file.path);
             await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
         }
 
