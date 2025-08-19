@@ -22,7 +22,6 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: (req, file) => {
-        // Dynamically set resource_type based on mimetype for robust uploads
         const resource_type = file.mimetype === 'application/pdf' ? 'raw' : 'auto';
         return {
             folder: 'smartvault_uploads',
@@ -39,20 +38,22 @@ const upload = multer({
 // --- HELPER FUNCTIONS ---
 const getPublicIdFromUrl = (url: string) => {
     const parts = url.split('/');
-    const filenameWithExt = parts.pop()!;
+    // Use a non-null assertion (!) because we are certain a filename will exist.
+    const filenameWithExt = parts.pop()!; 
     const folder = parts.pop()!;
     return `${folder}/${path.parse(filenameWithExt).name}`;
 };
 
-const getResourceType = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    return 'raw'; // Default to 'raw' for PDFs, text files, etc.
+const getResourceType = (mimeType: string | undefined) => {
+    if (mimeType?.startsWith('image/')) return 'image';
+    if (mimeType?.startsWith('video/')) return 'video';
+    return 'raw';
 }
 
 
 // --- ROUTES ---
 
+// ... (upload and get routes are correct and remain the same) ...
 router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
@@ -91,10 +92,13 @@ router.get('/', auth, async (req: AuthRequest, res) => {
   }
 });
 
+
+// --- FINAL, CORRECTED ROUTES ---
+
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ message: 'Not found' });
+    if (!file || !file.path) return res.status(404).json({ message: 'Not found' });
     
     const publicId = getPublicIdFromUrl(file.path);
     const resource_type = getResourceType(file.mimeType);
@@ -111,7 +115,7 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
 router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ message: 'File not found' });
+    if (!file || !file.path) return res.status(404).json({ message: 'File not found' });
 
     const publicId = getPublicIdFromUrl(file.path);
     const resource_type = getResourceType(file.mimeType);
@@ -131,7 +135,7 @@ router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
 router.get('/:id/download', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ message: 'File not found' });
+    if (!file || !file.path) return res.status(404).json({ message: 'File not found' });
     
     const publicId = getPublicIdFromUrl(file.path);
     const resource_type = getResourceType(file.mimeType);
