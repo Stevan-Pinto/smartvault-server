@@ -21,10 +21,14 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'smartvault_uploads',
-        resource_type: 'auto'
-    } as any
+    params: (req, file) => {
+        // Dynamically set resource_type based on mimetype for robust uploads
+        const resource_type = file.mimetype === 'application/pdf' ? 'raw' : 'auto';
+        return {
+            folder: 'smartvault_uploads',
+            resource_type: resource_type,
+        };
+    },
 });
 
 const upload = multer({
@@ -88,7 +92,8 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
         return res.status(404).json({ message: 'Not found' });
     }
     const publicId = getPublicIdFromUrl(file.path);
-    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+    await cloudinary.uploader.destroy(publicId, { resource_type: resource_type });
     await file.deleteOne();
     res.json({ ok: true });
   } catch (err) {
@@ -104,13 +109,15 @@ router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
         return res.status(404).json({ message: 'File not found' });
     }
     const publicId = getPublicIdFromUrl(file.path);
+    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
     const signedUrl = cloudinary.url(publicId, {
-        resource_type: 'raw',
+        resource_type: resource_type,
         sign_url: true,
         secure: true,
     });
     res.json({ previewUrl: signedUrl });
   } catch (err) {
+    console.error("Preview URL generation error:", err);
     res.status(500).json({ message: 'Could not get preview link' });
   }
 });
@@ -122,8 +129,9 @@ router.get('/:id/download', auth, async (req: AuthRequest, res) => {
         return res.status(404).json({ message: 'File not found' });
     }
     const publicId = getPublicIdFromUrl(file.path);
+    const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
     const signedUrl = cloudinary.url(publicId, {
-        resource_type: 'raw',
+        resource_type: resource_type,
         sign_url: true,
         secure: true,
         attachment: file.filename
@@ -200,7 +208,8 @@ router.post('/delete-batch', auth, async (req: AuthRequest, res) => {
 
         for (const file of files) {
             const publicId = getPublicIdFromUrl(file.path);
-            await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+            const resource_type = file.mimeType === 'application/pdf' ? 'raw' : 'image';
+            await cloudinary.uploader.destroy(publicId, { resource_type: resource_type });
         }
 
         await File.deleteMany({ _id: { $in: files.map(f => f._id) }, ownerId: req.userId });
