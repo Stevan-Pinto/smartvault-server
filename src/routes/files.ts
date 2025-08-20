@@ -44,12 +44,12 @@ const getPublicIdFromUrl = (url: string) => {
     return `${folder}/${path.parse(filenameWithExt).name}`;
 };
 
-const getResourceType = (mimeType: string | undefined) => {
+// This new helper robustly determines the resource type from the mimeType
+const getResourceType = (mimeType: string | undefined): 'image' | 'video' | 'raw' => {
     if (mimeType?.startsWith('image/')) return 'image';
     if (mimeType?.startsWith('video/')) return 'video';
     return 'raw'; // Default to 'raw' for PDFs, text files, etc.
 }
-
 
 // --- ROUTES ---
 
