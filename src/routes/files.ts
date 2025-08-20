@@ -22,6 +22,7 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: (req, file) => {
+        // This function now correctly sets the resource_type during upload
         const resource_type = file.mimetype === 'application/pdf' ? 'raw' : 'auto';
         return {
             folder: 'smartvault_uploads',
@@ -38,8 +39,7 @@ const upload = multer({
 // --- HELPER FUNCTIONS ---
 const getPublicIdFromUrl = (url: string) => {
     const parts = url.split('/');
-    // Use a non-null assertion (!) because we are certain a filename will exist.
-    const filenameWithExt = parts.pop()!; 
+    const filenameWithExt = parts.pop()!;
     const folder = parts.pop()!;
     return `${folder}/${path.parse(filenameWithExt).name}`;
 };
@@ -47,53 +47,10 @@ const getPublicIdFromUrl = (url: string) => {
 const getResourceType = (mimeType: string | undefined) => {
     if (mimeType?.startsWith('image/')) return 'image';
     if (mimeType?.startsWith('video/')) return 'video';
-    return 'raw';
+    return 'raw'; // Default to 'raw' for PDFs, text files, etc.
 }
 
-
 // --- ROUTES ---
-
-// ... (upload and get routes are correct and remain the same) ...
-router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const { folderId } = req.body;
-    const doc = await File.create({
-      ownerId: req.userId,
-      filename: req.file.originalname,
-      path: req.file.path,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
-      folderId: folderId === 'root' ? null : folderId || null,
-    });
-    await fileQueue.add('process-file', { fileId: doc._id.toString() });
-    res.status(201).json(doc);
-  } catch (err: any) {
-    console.error('Upload error', err);
-    res.status(500).json({ message: 'Upload failed', error: err.message || err });
-  }
-});
-
-router.get('/', auth, async (req: AuthRequest, res) => {
-  try {
-    const folderId = req.query.folderId || 'root';
-    const hasDuplicates = req.query.hasDuplicates === 'true';
-    const query: any = { ownerId: req.userId };
-    if (req.query.folderId) {
-        query.folderId = folderId === 'root' ? null : folderId;
-    }
-    if (hasDuplicates) {
-        query['duplicates.0'] = { $exists: true };
-    }
-    const files = await File.find(query).sort({ createdAt: -1 });
-    res.json(files);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to list files' });
-  }
-});
-
-
-// --- FINAL, CORRECTED ROUTES ---
 
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
   try {
@@ -149,6 +106,26 @@ router.get('/:id/download', auth, async (req: AuthRequest, res) => {
     res.json({ downloadUrl: signedUrl });
   } catch (err) {
     res.status(500).json({ message: 'Download failed' });
+  }
+});
+
+router.post('/upload', auth, upload.single('file'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    const { folderId } = req.body;
+    const doc = await File.create({
+      ownerId: req.userId,
+      filename: req.file.originalname,
+      path: req.file.path,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      folderId: folderId === 'root' ? null : folderId || null,
+    });
+    await fileQueue.add('process-file', { fileId: doc._id.toString() });
+    res.status(201).json(doc);
+  } catch (err: any) {
+    console.error('Upload error', err);
+    res.status(500).json({ message: 'Upload failed', error: err.message || err });
   }
 });
 
