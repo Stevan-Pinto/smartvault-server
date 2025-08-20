@@ -44,12 +44,12 @@ const getPublicIdFromUrl = (url: string) => {
     return `${folder}/${path.parse(filenameWithExt).name}`;
 };
 
-// This new helper robustly determines the resource type from the mimeType
 const getResourceType = (mimeType: string | undefined) => {
     if (mimeType?.startsWith('image/')) return 'image';
     if (mimeType?.startsWith('video/')) return 'video';
     return 'raw'; // Default to 'raw' for PDFs, text files, etc.
 }
+
 
 // --- ROUTES ---
 
@@ -112,13 +112,16 @@ router.get('/:id/preview', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || !file.path) return res.status(404).json({ message: 'File not found' });
+
     const publicId = getPublicIdFromUrl(file.path);
     const resource_type = getResourceType(file.mimeType);
+    
     const signedUrl = cloudinary.url(publicId, {
         resource_type: resource_type,
         sign_url: true,
         secure: true,
     });
+    
     res.json({ previewUrl: signedUrl });
   } catch (err) {
     res.status(500).json({ message: 'Could not get preview link' });
@@ -129,8 +132,10 @@ router.get('/:id/download', auth, async (req: AuthRequest, res) => {
   try {
     const file = await File.findById(req.params.id);
     if (!file || !file.path) return res.status(404).json({ message: 'File not found' });
+    
     const publicId = getPublicIdFromUrl(file.path);
     const resource_type = getResourceType(file.mimeType);
+
     const signedUrl = cloudinary.url(publicId, {
         resource_type: resource_type,
         sign_url: true,
